@@ -18,7 +18,8 @@ class MainWindow(QMainWindow):
         self.aufschlag_input1
         self.aufschlag_input2
         self.path_input
-        self.is_checked = False
+        self.checkbox_kaufpreis = False
+        self.checkbox_steuer = True
 
     def init_window(self):
         """Настройки окна."""
@@ -189,10 +190,15 @@ class MainWindow(QMainWindow):
         Startpreis_checkbox = QCheckBox("Kaufpreis")
         Startpreis_checkbox.setStyleSheet(self.checkbox_style())
         left_layout.addWidget(Startpreis_checkbox)
-        
+
+        Steuer_checkbox = QCheckBox("Steuer")
+        Steuer_checkbox.setStyleSheet(self.checkbox_style())
+        Steuer_checkbox.setChecked(True)  # Устанавливаем галочку
+        left_layout.addWidget(Steuer_checkbox)
+
         # Подключение сигнала
         Startpreis_checkbox.stateChanged.connect(self.on_startpreis_changed)    
-
+        Steuer_checkbox.stateChanged.connect(self.on_steuer_changed)
         return left_panel
 
     def create_bottom_panel(self):
@@ -285,18 +291,27 @@ class MainWindow(QMainWindow):
             aufschlag_value2 = self.aufschlag_input2.text()
             path_save = self.path_input.text()
             path_file = self.dragged_file_path
-            is_checked = self.is_checked
+            checkbox_kaufpreis = self.checkbox_kaufpreis
+            checkbox_steuer = self.checkbox_steuer
             print("Получены значения:")
             print(f"Lieferung: {lieferung_value}")
             print(f"Aufschlag <500: {aufschlag_value1}")
             print(f"Aufschlag >500: {aufschlag_value2}")
             print(f"Путь сохранение: {path_save}")
             print(f"Путь файла: {path_file}")
-            print(f"Галочка: {is_checked}")
+            print(f"Галочка1: {checkbox_kaufpreis}")
+            print(f"Галочка2: {checkbox_steuer}")
 
             # Передаем данные в сортировщик
             sortier = ExcelSorter(path_save)
-            sortier.sortExcel(lieferung_value, aufschlag_value1, aufschlag_value2, path_file, is_checked)
+            sortier.sortExcel(
+                lieferung_value, 
+                aufschlag_value1, 
+                aufschlag_value2, 
+                path_file, 
+                checkbox_kaufpreis, 
+                checkbox_steuer
+                )
 
             print("Сортировка выполнена успешно!")
 
@@ -421,7 +436,11 @@ class MainWindow(QMainWindow):
 
     def on_startpreis_changed(self, state):
         """Обработчик изменения состояния чекбокса."""
-        self.is_checked = state == Qt.Checked
+        self.checkbox_kaufpreis = state == Qt.Checked
+
+    def on_steuer_changed(self, state):
+        """Обработчик изменения состояния чекбокса."""
+        self.checkbox_steuer = state == Qt.Checked
 
     def dropEvent(self, event):
         """Обработка отпускания файла."""

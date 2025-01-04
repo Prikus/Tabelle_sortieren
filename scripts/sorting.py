@@ -19,7 +19,7 @@ class ExcelSorter:
             
         self.config_path = "config.toml"
     
-    def sortExcel(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, is_checked):
+    def sortExcel(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer):
         # Загрузка конфигурации
         config = toml.load(self.config_path)
 
@@ -47,14 +47,32 @@ class ExcelSorter:
 
         if  first_cell_value == "Brands":
             print("Условие выполнено: первая ячейка пуста")
-            self.methodSortZwei(aufschlag_value2, file_path, is_checked)
+            self.methodSortZwei(aufschlag_value1, file_path, checkbox_kaufpreis, checkbox_steuer)
         else:
             print(f"Условие не выполнено: первая ячейка содержит '{first_cell_value}'")
-            self.methodSortEins(lieferung_value, aufschlag_value1, aufschlag_value2, file_path, is_checked)
+            self.methodSortEins(lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer)
 
+    def calculate(
+                self,
+                preis,
+                lieferung_value, 
+                aufschlag_value1,
+                aufschlag_value2, 
+                checkbox_steuer
+                ):
 
+            STEUER = 1.19
+            if preis < 500:
+                preis = preis + aufschlag_value1 + lieferung_value
+            else:
+                preis = preis + (preis * aufschlag_value2 / 100) + lieferung_value
 
-    def methodSortEins(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, is_checked):
+            if checkbox_steuer:
+                preis *= STEUER
+
+            return round(preis, 2)
+
+    def methodSortEins(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer):
         # Загрузка данных из Excel-файла
         df = pd.read_excel(file_path)
         
@@ -72,8 +90,8 @@ class ExcelSorter:
         # Удаляем временный столбец 'First_Word'
         filtered_df.drop(columns=['First_Word'], inplace=True)
 
-        # Если is_checked равно True, добавляем столбец 'Kaufpreis'
-        if is_checked:
+        # Если checkbox_kaufpreis равно True, добавляем столбец 'Kaufpreis'
+        if checkbox_kaufpreis:
             # Сохраняем оригинальные цены перед преобразованием
             filtered_df['Kaufpreis'] = filtered_df['Preis'].copy()
 
@@ -91,15 +109,15 @@ class ExcelSorter:
                 price = row['Preis']
                 
                 if pd.notna(price):
-                    if price < 500:
-                        price = price + aufschlag_value1 + lieferung_value
-                        price = price * 1.19
-                    else:
-                        price = price + (price * aufschlag_value2 / 100) + lieferung_value
-                        price = price * 1.19
-
-                    # Записываем форматированную цену в отдельный столбец
-                    filtered_df.at[index, 'Formatted_Preis'] = f"{price:.2f} €"
+                    formatted_price = self.calculate(
+                        price,
+                        lieferung_value,
+                        aufschlag_value1,
+                        aufschlag_value2,
+                        checkbox_steuer
+                    )
+                    
+                    filtered_df.at[index, 'Formatted_Preis'] = f"{formatted_price:.2f} €"
 
         # Заменяем столбец 'Preis' на форматированный
         filtered_df['Preis'] = filtered_df['Formatted_Preis']
@@ -123,7 +141,7 @@ class ExcelSorter:
             print(f"Файл сохранен в резервное расположение: {backup_path}")
 
 
-    def methodSortZwei(self, aufschlag_value2, file_path, is_checked):
+    def methodSortZwei(self, aufschlag_value1, file_path, checkbox_kaufpreis, checkbox_steuer):
         # Читаем файл
         df = pd.read_excel(file_path)
         
@@ -133,8 +151,8 @@ class ExcelSorter:
         filtered_df.columns = headers
         filtered_df.reset_index(drop=True, inplace=True)
         
-        # Если is_checked равно True, добавляем столбец 'Kaufpreis'
-        if is_checked:
+        # Если checkbox_kaufpreis равно True, добавляем столбец 'Kaufpreis'
+        if checkbox_kaufpreis:
             # Сохраняем оригинальные цены перед преобразованием
             filtered_df['Kaufpreis'] = filtered_df['Selling_Price'].copy()
 
@@ -157,13 +175,15 @@ class ExcelSorter:
                 price = row['Selling_Price']
                 
                 if pd.notna(price):
-                    price = (price + (price * aufschlag_value2 / 100))* 1.19
-
-                    # Убедитесь, что столбец существует и имеет тип данных object (строка)
-                    filtered_df['Formatted_Preis'] = filtered_df['Formatted_Preis'].astype(str)
-
-                    # Запись форматированного значения в столбец
-                    filtered_df.at[index, 'Formatted_Preis'] = f"{price:.2f} €"
+                    formatted_price = self.calculate(
+                        price,
+                        0,
+                        aufschlag_value1,
+                        0,
+                        checkbox_steuer
+                    )
+                    
+                    filtered_df.at[index, 'Formatted_Preis'] = f"{formatted_price:.2f} €"
 
 
         # Заменяем столбец 'Preis' на форматированный
