@@ -1,20 +1,22 @@
-import pandas as pd
-import toml
-import os
-import requests
-from datetime import datetime
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
-from concurrent.futures import ThreadPoolExecutor
+# Импортируем необходимые библиотеки
+import pandas as pd                                # Для работы с таблицами Excel
+import toml                                        # Для чтения конфигурационных файлов
+import os                                          # Для работы с файловой системой
+import requests                                    # Для HTTP-запросов (загрузка описаний и изображений)
+from datetime import datetime                      # Для работы с датой и временем
+from openpyxl import load_workbook                 # Для работы с Excel-файлами (автоподгонка ширины столбцов)
+from openpyxl.utils import get_column_letter       # Для получения буквенного обозначения столбца
+from concurrent.futures import ThreadPoolExecutor  # Для параллельной загрузки данных
 
-class ExcelSorter:
+# Класс для сортировки и обработки Excel-файлов
+class ExcelSorter: 
     def __init__(self, file_path_save):
+        # Формируем путь для сохранения файла с учетом текущей даты
         current_date = datetime.now().strftime("%d-%m-%Y")
 
         if file_path_save == "":
             self.file_path_save = os.path.join(os.path.expanduser("~"), "Desktop", f"filtered_{current_date}.xlsx")
         else:
-            # Добавляем расширение .xlsx если его нет
             if not file_path_save.endswith('.xlsx'):
                 file_path_save += f"/filtered_{current_date}.xlsx"
             self.file_path_save = file_path_save
@@ -22,9 +24,10 @@ class ExcelSorter:
         self.config_path = "config.toml"
     
     def sortExcel(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer):
-        # Загрузка конфигурации
+        # Загрузка конфигурации из TOML-файла
         config = toml.load(self.config_path)
 
+        # Используем значения по умолчанию, если не переданы параметры
         if lieferung_value == "":
             lieferung_value = config['default']['lieferung_value']
         if aufschlag_value1 == "":
@@ -47,6 +50,7 @@ class ExcelSorter:
         # Преобразуем значение в строку для корректного сравнения
         first_cell_value = str(first_cell_value).strip() if first_cell_value is not None else None
 
+        # В зависимости от значения первой ячейки вызываем нужный метод сортировки
         if  first_cell_value == "Brands":
             print("Условие выполнено: первая ячейка пуста")
             self.methodSortZwei(aufschlag_value1, file_path, checkbox_kaufpreis, checkbox_steuer)
@@ -62,7 +66,7 @@ class ExcelSorter:
                 aufschlag_value2, 
                 checkbox_steuer
                 ):
-
+            # Расчет итоговой цены с учетом надбавок и налога
             STEUER = 1.19
             if preis < 500:
                 preis = preis + aufschlag_value1 + lieferung_value
@@ -75,20 +79,20 @@ class ExcelSorter:
             return round(preis, 2)
 
     def methodSortEins(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer, export_to_csv=True):
+        # Основная сортировка для обычных файлов
         df = pd.read_excel(file_path)
         config = toml.load(self.config_path)
         bezeichnung_filter = config['dataSet']['data']
 
-        # Сохраняем значение первой строки из колонки "Artikelnummer" во временную переменную
-
-
+        # Оставляем только нужные столбцы и фильтруем по первым словам
         df = df[["Artikelnummer", "Bezeichnung", "Preis", "Zustand"]].copy()
         df['Artikelnummer_raw'] = df['Artikelnummer'].astype(str)
         df['Artikelnummer'] = df['Artikelnummer'].astype(str) + df['Zustand'].astype(str).str.upper()
+        df['Bezeichnung'] = df['Bezeichnung'].astype(str) + " Zustand:" + df['Zustand'].astype(str).str.capitalize()
         df['First_Word'] = df['Bezeichnung'].str.split().str[0]
         df = df[df['First_Word'].isin(bezeichnung_filter)].drop(columns=['First_Word'])
         
-        
+        # Функция для получения URL изображения
         def get_bilder_url(artikelnummer_raw):
             url = f'https://telefoneria.com/wp-content/uploads/products/bilder/{artikelnummer_raw}.webp'
             standard_url = 'https://telefoneria.com/wp-content/uploads/products/bilder/standart.webp'
@@ -103,6 +107,7 @@ class ExcelSorter:
                 print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")  # красный
             return standard_url
 
+        # Функция для загрузки полной описания
         def beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/beschreibung/{artikelnummer_raw}.html"
             try:
@@ -115,8 +120,9 @@ class ExcelSorter:
                     print(f"\033[91mFehler beim Laden der Datei {url}: {resp.status_code}\033[0m")
             except Exception as e:
                 print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")
-            return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
+            return " "  # При ошибке или отсутствии файла возвращаем пробел
 
+        # Функция для загрузки короткого описания
         def kurze_beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/kurzebeschreibung/{artikelnummer_raw}.html"
             try:
@@ -129,22 +135,26 @@ class ExcelSorter:
                     print(f"\033[91mFehler beim Laden der Datei {url}: {resp.status_code}\033[0m")
             except Exception as e:
                 print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")
-            return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
+            return " "  # При ошибке или отсутствии файла возвращаем пробел
         
+        # Параллельная загрузка данных
         def fetch_all_beschreibungen_parallel(funktion, artikelnummer_list, max_threads=60):
             with ThreadPoolExecutor(max_workers=max_threads) as executor:
                 return list(executor.map(funktion, artikelnummer_list))
 
+        # Добавляем столбцы с изображениями и описаниями
         df['Bilder'] = fetch_all_beschreibungen_parallel(get_bilder_url, df['Artikelnummer_raw'].tolist())    
         df['Beschreibung'] = fetch_all_beschreibungen_parallel(beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
         df['Kurzbeschreibung'] = fetch_all_beschreibungen_parallel(kurze_beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
 
-
+        # Преобразуем цены в числовой формат
         df['Preis'] = pd.to_numeric(df['Preis'].astype(str).str.replace('€', '').str.replace(' ', ''), errors='coerce')
 
+        # Добавляем столбец "Kaufpreis" при необходимости
         if checkbox_kaufpreis:
             df['Kaufpreis'] = df['Preis']
 
+        # Применяем расчет цены
         def apply_calc(price):
             if pd.notna(price):
                 return self.calculate(price, lieferung_value, aufschlag_value1, aufschlag_value2, checkbox_steuer)
@@ -153,6 +163,7 @@ class ExcelSorter:
         df['Preis'] = df['Preis'].apply(apply_calc)
         df['Preis'] = df['Preis'].apply(lambda x: f"{x:.2f} €" if pd.notna(x) else x)
 
+        # Определяем категорию по названию
         def get_kategorie_from_bezeichnung(bezeichnung: str) -> str:
             name = bezeichnung.lower()
 
@@ -162,7 +173,6 @@ class ExcelSorter:
                 elif "samsung" in name:
                     return "Tablet > Samsung"
                 return "Tablet"
-
 
             elif "iphone" in name or ("galaxy" in name and "watch" not in name and "tab" not in name):
                 if "apple" in name:
@@ -226,10 +236,8 @@ class ExcelSorter:
                 self.autofit_columns(backup_path)
             print(f"Резервный файл сохранён: {backup_path}")
 
-
-
     def methodSortZwei(self, aufschlag_value1, file_path, checkbox_kaufpreis, checkbox_steuer):
-        # Читаем файл
+        # Сортировка для файлов с особыми заголовками (например, если первая ячейка "Brands")
         df = pd.read_excel(file_path)
         
         # Создаем новый DataFrame с реальными заголовками из второй строки
@@ -243,8 +251,7 @@ class ExcelSorter:
             # Сохраняем оригинальные цены перед преобразованием
             filtered_df['Kaufpreis'] = filtered_df['Selling_Price'].copy()
 
-
-
+        # Преобразуем цены в числовой формат
         filtered_df['Selling_Online_Price'] = pd.to_numeric(
             filtered_df['Selling_Online_Price'].astype(str).str.replace('€', '').str.replace(' ', ''),
             errors='coerce'
@@ -272,12 +279,11 @@ class ExcelSorter:
                     
                     filtered_df.at[index, 'Formatted_Preis'] = f"{formatted_price:.2f} €"
 
-
         # Заменяем столбец 'Preis' на форматированный
         filtered_df['Selling_Price'] = filtered_df['Formatted_Preis']
         filtered_df.drop(columns=['Formatted_Preis'], inplace=True)
 
-           # Добавляем символ евро к столбцу Selling_Online_Price
+        # Добавляем символ евро к столбцу Selling_Online_Price
         filtered_df['Selling_Online_Price'] = filtered_df['Selling_Online_Price'].astype(str) + ' €'
         filtered_df.reset_index(drop=True, inplace=True)
 
@@ -318,7 +324,6 @@ class ExcelSorter:
             worksheet.column_dimensions[column_letter].width = adjusted_width
 
         workbook.save(filename)
-
 
     def read_first_column_value(self, file_path):
         """
