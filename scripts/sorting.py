@@ -5,6 +5,7 @@ import requests
 from datetime import datetime
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+from concurrent.futures import ThreadPoolExecutor
 
 class ExcelSorter:
     def __init__(self, file_path_save):
@@ -94,33 +95,37 @@ class ExcelSorter:
         def beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/beschreibung/{artikelnummer_raw}.html"
             try:
-                resp = requests.get(url, timeout=10)
+                resp = requests.get(url, timeout=10)  # Можно поменять timeout обратно на 10
                 resp.encoding = 'utf-8'
                 if resp.status_code == 200:
-                    # Ganze Zeile ohne Zeilenumbrüche
+                    print(f"\033[92mBeschreibung geladen für {artikelnummer_raw}\033[0m")
                     return resp.text.replace('\n', '').replace('\r', '')
                 else:
-                    print(f"Fehler beim Laden der Datei {url}: {resp.status_code}")
+                    print(f"\033[91mFehler beim Laden der Datei {url}: {resp.status_code}\033[0m")
             except Exception as e:
-                print(f"Fehler beim Zugriff auf {url}: {e}")
-                return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
-            
+                print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")
+            return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
+
         def kurze_beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/kurzebeschreibung/{artikelnummer_raw}.html"
             try:
-                resp = requests.get(url, timeout=10)
+                resp = requests.get(url, timeout=10)  # Можно поменять timeout обратно на 10
                 resp.encoding = 'utf-8'
                 if resp.status_code == 200:
-                    # Ganze Zeile ohne Zeilenumbrüche
+                    print(f"\033[92mBeschreibung geladen für {artikelnummer_raw}\033[0m")
                     return resp.text.replace('\n', '').replace('\r', '')
                 else:
-                    print(f"Fehler beim Laden der Datei {url}: {resp.status_code}")
+                    print(f"\033[91mFehler beim Laden der Datei {url}: {resp.status_code}\033[0m")
             except Exception as e:
-                print(f"Fehler beim Zugriff auf {url}: {e}")
-                return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
-
-        df['Beschreibung'] = df['Artikelnummer_raw'].apply(beschreibung_abrufen)
-        df['Kurze_Beschreibung'] = df['Artikelnummer_raw'].apply(kurze_beschreibung_abrufen)
+                print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")
+            return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
+        
+        def fetch_all_beschreibungen_parallel(funktion, artikelnummer_list, max_threads=60):
+            with ThreadPoolExecutor(max_workers=max_threads) as executor:
+                return list(executor.map(funktion, artikelnummer_list))
+            
+        df['Beschreibung'] = fetch_all_beschreibungen_parallel(beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
+        df['Kurzbeschreibung'] = fetch_all_beschreibungen_parallel(kurze_beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
 
 
         df['Preis'] = pd.to_numeric(df['Preis'].astype(str).str.replace('€', '').str.replace(' ', ''), errors='coerce')
