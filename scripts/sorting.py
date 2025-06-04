@@ -1,6 +1,7 @@
 import pandas as pd
 import toml
 import os
+import requests
 from datetime import datetime
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
@@ -72,73 +73,142 @@ class ExcelSorter:
 
             return round(preis, 2)
 
-    def methodSortEins(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer):
-        # Загрузка данных из Excel-файла
+    def methodSortEins(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer, export_to_csv=True):
         df = pd.read_excel(file_path)
-        
         config = toml.load(self.config_path)
         bezeichnung_filter = config['dataSet']['data']
 
-        # Оставляем только нужные столбцы
-        columns_to_keep = ["Artikelnummer", "Bezeichnung", "Preis", "Zustand"]
-        filtered_df = df[columns_to_keep].copy()
+        # Сохраняем значение первой строки из колонки "Artikelnummer" во временную переменную
 
-        # Фильтрация по первому слову в столбце Bezeichnung
-        filtered_df.loc[:, 'First_Word'] = filtered_df['Bezeichnung'].str.split().str[0]
-        filtered_df = filtered_df[filtered_df['First_Word'].isin(bezeichnung_filter)]
 
-        # Удаляем временный столбец 'First_Word'
-        filtered_df.drop(columns=['First_Word'], inplace=True)
+        df = df[["Artikelnummer", "Bezeichnung", "Preis", "Zustand"]].copy()
+        df['Artikelnummer_raw'] = df['Artikelnummer'].astype(str)
+        df['Artikelnummer'] = df['Artikelnummer'].astype(str) + df['Zustand'].astype(str).str.upper()
+        df['First_Word'] = df['Bezeichnung'].str.split().str[0]
+        df = df[df['First_Word'].isin(bezeichnung_filter)].drop(columns=['First_Word'])
+        
 
-        # Если checkbox_kaufpreis равно True, добавляем столбец 'Kaufpreis'
+
+        df['bilder'] = 'https://telefoneria.com/wp-content/uploads/products/bilder/' + df['Artikelnummer_raw'] + '.webp'
+        
+        def beschreibung_abrufen(artikelnummer_raw):
+            url = f"https://telefoneria.com/wp-content/uploads/products/beschreibung/{artikelnummer_raw}.html"
+            try:
+                resp = requests.get(url, timeout=10)
+                resp.encoding = 'utf-8'
+                if resp.status_code == 200:
+                    # Ganze Zeile ohne Zeilenumbrüche
+                    return resp.text.replace('\n', '').replace('\r', '')
+                else:
+                    print(f"Fehler beim Laden der Datei {url}: {resp.status_code}")
+            except Exception as e:
+                print(f"Fehler beim Zugriff auf {url}: {e}")
+                return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
+            
+        def kurze_beschreibung_abrufen(artikelnummer_raw):
+            url = f"https://telefoneria.com/wp-content/uploads/products/kurzebeschreibung/{artikelnummer_raw}.html"
+            try:
+                resp = requests.get(url, timeout=10)
+                resp.encoding = 'utf-8'
+                if resp.status_code == 200:
+                    # Ganze Zeile ohne Zeilenumbrüche
+                    return resp.text.replace('\n', '').replace('\r', '')
+                else:
+                    print(f"Fehler beim Laden der Datei {url}: {resp.status_code}")
+            except Exception as e:
+                print(f"Fehler beim Zugriff auf {url}: {e}")
+                return " "  # Bei Fehler oder fehlender Datei immer ein Leerzeichen
+
+        df['Beschreibung'] = df['Artikelnummer_raw'].apply(beschreibung_abrufen)
+        df['Kurze_Beschreibung'] = df['Artikelnummer_raw'].apply(kurze_beschreibung_abrufen)
+
+
+        df['Preis'] = pd.to_numeric(df['Preis'].astype(str).str.replace('€', '').str.replace(' ', ''), errors='coerce')
+
         if checkbox_kaufpreis:
-            # Сохраняем оригинальные цены перед преобразованием
-            filtered_df['Kaufpreis'] = filtered_df['Preis'].copy()
+            df['Kaufpreis'] = df['Preis']
 
-        # Преобразуем столбец 'Preis' в числовой формат
-        filtered_df['Preis'] = pd.to_numeric(
-            filtered_df['Preis'].astype(str).str.replace('€', '').str.replace(' ', ''),
-            errors='coerce'
-        )
+        def apply_calc(price):
+            if pd.notna(price):
+                return self.calculate(price, lieferung_value, aufschlag_value1, aufschlag_value2, checkbox_steuer)
+            return price
 
-        # Создаем новый столбец для форматированных цен
-        filtered_df['Formatted_Preis'] = filtered_df['Preis'].copy()
+        df['Preis'] = df['Preis'].apply(apply_calc)
+        df['Preis'] = df['Preis'].apply(lambda x: f"{x:.2f} €" if pd.notna(x) else x)
 
-        if 'Preis' in filtered_df.columns:
-            for index, row in filtered_df.iterrows():
-                price = row['Preis']
-                
-                if pd.notna(price):
-                    formatted_price = self.calculate(
-                        price,
-                        lieferung_value,
-                        aufschlag_value1,
-                        aufschlag_value2,
-                        checkbox_steuer
-                    )
-                    
-                    filtered_df.at[index, 'Formatted_Preis'] = f"{formatted_price:.2f} €"
+        def get_kategorie_from_bezeichnung(bezeichnung: str) -> str:
+            name = bezeichnung.lower()
 
-        # Заменяем столбец 'Preis' на форматированный
-        filtered_df['Preis'] = filtered_df['Formatted_Preis']
-        filtered_df.drop(columns=['Formatted_Preis'], inplace=True)
+            if ("ipad" in name or "tab" in name) and "yealink" not in name:
+                if "apple" in name:
+                    return "Tablet > Apple"
+                elif "samsung" in name:
+                    return "Tablet > Samsung"
+                return "Tablet"
+
+
+            elif "iphone" in name or ("galaxy" in name and "watch" not in name and "tab" not in name):
+                if "apple" in name:
+                    return "Handy > Apple"
+                elif "samsung" in name:
+                    return "Handy > Samsung"
+                return "Handy"
+
+            elif "macbook" in name or "chromebook" in name or "notebook" in name or "book" in name:
+                if "apple" in name:
+                    return "Notebook > Apple"
+                elif "samsung" in name:
+                    return "Notebook > Samsung"
+                return "Notebook"
+
+            elif "watch" in name:
+                if "apple" in name:
+                    return "Smartwatch > Apple"
+                elif "samsung" in name:
+                    return "Smartwatch > Samsung"
+                return "Smartwatch"
+
+            elif "airpods" in name or "buds" in name or "headset" in name:
+                if "apple" in name:
+                    return "Kopfhörer > Apple"
+                elif "samsung" in name:
+                    return "Kopfhörer > Samsung"
+                elif "yealink" in name:
+                    return "Kopfhörer > Yealink"
+                return "Kopfhörer"
+
+            return "Sonstiges"
+
+        df['Kategorien'] = df['Bezeichnung'].apply(get_kategorie_from_bezeichnung)
+        df = df.rename(columns={'Bezeichnung': 'Name'})
+
+        # Удаляем временный столбец 
+        df.drop(columns=['Artikelnummer_raw'], inplace=True)
 
         try:
-            # Сохраняем результат через ExcelWriter
-            with pd.ExcelWriter(self.file_path_save, engine='openpyxl') as writer:
-                filtered_df.to_excel(writer, index=False)
-            
-            # Подгоняем размеры столбцов
-            self.autofit_columns(self.file_path_save)
-            
-            print(f"Фильтрация завершена. Новый файл сохранён по пути: {self.file_path_save}")
+            if export_to_csv:
+                # Сохраняем в CSV с запятыми
+                csv_path = self.file_path_save.replace('.xlsx', '.csv')
+                df.to_csv(csv_path, index=False, sep=',')
+                print(f"Файл CSV сохранён: {csv_path}")
+            else:
+                # Сохраняем в Excel
+                with pd.ExcelWriter(self.file_path_save, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False)
+                self.autofit_columns(self.file_path_save)
+                print(f"Файл Excel сохранён: {self.file_path_save}")
+
         except Exception as e:
-            print(f"Ошибка при сохранении файла: {str(e)}")
-            # Попробуем сохранить на рабочий стол, если возникла ошибка
-            backup_path = os.path.join(os.path.expanduser("~"), "Desktop", "filtered_example_backup.xlsx")
-            filtered_df.to_excel(backup_path, index=False)
-            self.autofit_columns(backup_path)
-            print(f"Файл сохранен в резервное расположение: {backup_path}")
+            print(f"Ошибка при сохранении: {e}")
+            backup_path = os.path.join(os.path.expanduser("~"), "Desktop",
+                                    f"filtered_example_backup.{ 'csv' if export_to_csv else 'xlsx' }")
+            if export_to_csv:
+                df.to_csv(backup_path, index=False, sep=',')
+            else:
+                df.to_excel(backup_path, index=False)
+                self.autofit_columns(backup_path)
+            print(f"Резервный файл сохранён: {backup_path}")
+
 
 
     def methodSortZwei(self, aufschlag_value1, file_path, checkbox_kaufpreis, checkbox_steuer):
