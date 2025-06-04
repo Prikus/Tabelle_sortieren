@@ -93,7 +93,7 @@ class ExcelSorter:
             url = f'https://telefoneria.com/wp-content/uploads/products/bilder/{artikelnummer_raw}.webp'
             standard_url = 'https://telefoneria.com/wp-content/uploads/products/bilder/standart.webp'
             try:
-                resp = requests.head(url, timeout=3)
+                resp = requests.head(url, timeout=10)
                 if resp.status_code == 200:
                     print(f"\033[92mBild vorhanden für {artikelnummer_raw}: {url}\033[0m")  # зелёный
                     return url
@@ -106,7 +106,7 @@ class ExcelSorter:
         def beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/beschreibung/{artikelnummer_raw}.html"
             try:
-                resp = requests.get(url, timeout=10)  # Можно поменять timeout обратно на 10
+                resp = requests.get(url, timeout=10) 
                 resp.encoding = 'utf-8'
                 if resp.status_code == 200:
                     print(f"\033[92mBeschreibung geladen für {artikelnummer_raw}\033[0m")
@@ -120,7 +120,7 @@ class ExcelSorter:
         def kurze_beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/kurzebeschreibung/{artikelnummer_raw}.html"
             try:
-                resp = requests.get(url, timeout=10)  # Можно поменять timeout обратно на 10
+                resp = requests.get(url, timeout=10)  
                 resp.encoding = 'utf-8'
                 if resp.status_code == 200:
                     print(f"\033[92mBeschreibung geladen für {artikelnummer_raw}\033[0m")
