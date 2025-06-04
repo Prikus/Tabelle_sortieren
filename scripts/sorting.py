@@ -88,10 +88,21 @@ class ExcelSorter:
         df['First_Word'] = df['Bezeichnung'].str.split().str[0]
         df = df[df['First_Word'].isin(bezeichnung_filter)].drop(columns=['First_Word'])
         
-
-
-        df['bilder'] = 'https://telefoneria.com/wp-content/uploads/products/bilder/' + df['Artikelnummer_raw'] + '.webp'
         
+        def get_bilder_url(artikelnummer_raw):
+            url = f'https://telefoneria.com/wp-content/uploads/products/bilder/{artikelnummer_raw}.webp'
+            standard_url = 'https://telefoneria.com/wp-content/uploads/products/bilder/standart.webp'
+            try:
+                resp = requests.head(url, timeout=3)
+                if resp.status_code == 200:
+                    print(f"\033[92mBild vorhanden für {artikelnummer_raw}: {url}\033[0m")  # зелёный
+                    return url
+                else:
+                    print(f"\033[91mKein Bild für {artikelnummer_raw}, benutze Standard: {standard_url}\033[0m")  # красный
+            except Exception as e:
+                print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")  # красный
+            return standard_url
+
         def beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/beschreibung/{artikelnummer_raw}.html"
             try:
@@ -123,7 +134,8 @@ class ExcelSorter:
         def fetch_all_beschreibungen_parallel(funktion, artikelnummer_list, max_threads=60):
             with ThreadPoolExecutor(max_workers=max_threads) as executor:
                 return list(executor.map(funktion, artikelnummer_list))
-            
+
+        df['Bilder'] = fetch_all_beschreibungen_parallel(get_bilder_url, df['Artikelnummer_raw'].tolist())    
         df['Beschreibung'] = fetch_all_beschreibungen_parallel(beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
         df['Kurzbeschreibung'] = fetch_all_beschreibungen_parallel(kurze_beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
 
