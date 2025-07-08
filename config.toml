@@ -4,4 +4,4 @@ aufschlag_value1 = 50 #Наценка <500 (€)
 aufschlag_value2 = 10 #Наценка <500 (%)
 
 [dataSet]
-data = ["Apple", "Samsung", "Yealink"]
+data = ["Apple", "Samsung", "Xiaomi"]
