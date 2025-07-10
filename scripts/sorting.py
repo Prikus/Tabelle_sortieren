@@ -7,7 +7,13 @@ from datetime import datetime                      # Для работы с да
 from openpyxl import load_workbook                 # Для работы с Excel-файлами (автоподгонка ширины столбцов)
 from openpyxl.utils import get_column_letter       # Для получения буквенного обозначения столбца
 from concurrent.futures import ThreadPoolExecutor  # Для параллельной загрузки данных
+# Дополнительные библиотеки для логирования отсутствующих изображений\import csv
+import threading                                   # Для потокобезопасного логирования
+import csv                                         # Для работы с CSV-файлами (логирование отсутствующих изображений)
 
+# Уровень модуля для потокобезопасного логирования
+_log_file = "missing_images.csv" 
+_log_lock = threading.Lock()                        
 # Класс для сортировки и обработки Excel-файлов
 class ExcelSorter: 
     def __init__(self, file_path_save):
@@ -57,9 +63,9 @@ class ExcelSorter:
         else:
             print(f"Условие не выполнено: первая ячейка содержит '{first_cell_value}'")
             self.methodSortEins(lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer)
-
-    def calculate(
-                self,
+    
+    def calculate(  
+                self,                       
                 preis,
                 lieferung_value, 
                 aufschlag_value1,
@@ -93,25 +99,54 @@ class ExcelSorter:
         df = df[df['First_Word'].isin(bezeichnung_filter)].drop(columns=['First_Word'])
         
         # Функция для получения URL изображения
-        def get_bilder_url(artikelnummer_raw):
-            url = f'https://telefoneria.com/wp-content/uploads/products/bilder/{artikelnummer_raw}.webp'
-            standard_url = 'https://telefoneria.com/wp-content/uploads/products/bilder/standart.webp'
+        def get_bilder_url(artikelnummer_raw, bezeichnung):
+            base_url = "https://telefoneria.com/wp-content/uploads/products/bilder"
+            default_url = f"{base_url}/standart.webp"
+
+            # 1. Попытка артикульного изображения
+            article_url = f"{base_url}/{artikelnummer_raw}.webp"
             try:
-                resp = requests.head(url, timeout=10)
+                resp = requests.head(article_url, timeout=100)
                 if resp.status_code == 200:
-                    print(f"\033[92mBild vorhanden für {artikelnummer_raw}: {url}\033[0m")  # зелёный
-                    return url
+                    print(f"\033[92mBild vorhanden für {artikelnummer_raw}: {article_url}\033[0m")
+                    return article_url
                 else:
-                    print(f"\033[91mKein Bild für {artikelnummer_raw}, benutze Standard: {standard_url}\033[0m")  # красный
+                    print(f"\033[91mKein Bild für {artikelnummer_raw} (Status {resp.status_code})\033[0m")
+                    # Логируем отсутствие
+                    with _log_lock, open(_log_file, "a", newline="", buffering=1) as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow([artikelnummer_raw, bezeichnung])
             except Exception as e:
-                print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")  # красный
-            return standard_url
+                print(f"\033[91mFehler beim Zugriff auf {article_url}: {e}\033[0m")
+                with _log_lock, open(_log_file, "a", newline="", buffering=1) as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow([artikelnummer_raw, bezeichnung])
+
+            # 2. Фоллбек по производителю
+            name_lower = bezeichnung.lower()
+            for manufacturer in ("apple", "samsung", "xiaomi"):
+                if manufacturer in name_lower:
+                    manu_url = f"{base_url}/standart_{manufacturer}.webp"
+                    try:
+                        resp = requests.head(manu_url, timeout=100)
+                        if resp.status_code == 200:
+                            print(f"\033[93mHerstellerbild gefunden ({manufacturer}): {manu_url}\033[0m")
+                            return manu_url
+                        else:
+                            print(f"\033[91mKein Herstellerbild für {manufacturer} (Status {resp.status_code})\033[0m")
+                    except Exception as e:
+                        print(f"\033[91mFehler beim Zugriff auf {manu_url}: {e}\033[0m")
+                    break
+
+            # 3. Генеральный фоллбек
+            print(f"\033[91mVerwende generisches Standardbild: {default_url}\033[0m")
+            return default_url
 
         # Функция для загрузки полной описания
         def beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/beschreibung/{artikelnummer_raw}.html"
             try:
-                resp = requests.get(url, timeout=10) 
+                resp = requests.get(url, timeout=100) 
                 resp.encoding = 'utf-8'
                 if resp.status_code == 200:
                     print(f"\033[92mBeschreibung geladen für {artikelnummer_raw}\033[0m")
@@ -126,7 +161,7 @@ class ExcelSorter:
         def kurze_beschreibung_abrufen(artikelnummer_raw):
             url = f"https://telefoneria.com/wp-content/uploads/products/kurzebeschreibung/{artikelnummer_raw}.html"
             try:
-                resp = requests.get(url, timeout=10)  
+                resp = requests.get(url, timeout=100)  
                 resp.encoding = 'utf-8'
                 if resp.status_code == 200:
                     print(f"\033[92mBeschreibung geladen für {artikelnummer_raw}\033[0m")
@@ -143,7 +178,13 @@ class ExcelSorter:
                 return list(executor.map(funktion, artikelnummer_list))
 
         # Добавляем столбцы с изображениями и описаниями
-        df['Bilder'] = fetch_all_beschreibungen_parallel(get_bilder_url, df['Artikelnummer_raw'].tolist())    
+        df['Bilder'] = fetch_all_beschreibungen_parallel(
+            lambda artikelnummer_raw: get_bilder_url(
+            artikelnummer_raw, 
+            df.loc[df['Artikelnummer_raw'] == artikelnummer_raw, 'Bezeichnung'].values[0]
+            ),
+            df['Artikelnummer_raw'].tolist()
+        )
         df['Beschreibung'] = fetch_all_beschreibungen_parallel(beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
         df['Kurzbeschreibung'] = fetch_all_beschreibungen_parallel(kurze_beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
 
