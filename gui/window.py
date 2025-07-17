@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QCheckBox, 
-    QLabel, QLineEdit, QFileDialog
+    QLabel, QLineEdit, QFileDialog, QProgressBar
 )
 from PyQt5.QtCore import Qt, QPoint
 from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QIcon
@@ -54,6 +54,11 @@ class MainWindow(QMainWindow):
 
         # Растягивающийся элемент для закрепления нижней панели внизу
         central_layout.addStretch()
+
+        # Добавляем прогресс-бар перед нижней панелью
+        progress_bar = self.create_progress_bar()
+        self.progress_bar = progress_bar
+        central_layout.addWidget(progress_bar)      
 
         # Нижняя панель
         bottom_panel = self.create_bottom_panel()
@@ -129,6 +134,31 @@ class MainWindow(QMainWindow):
 
 
         return buttons_widget
+
+
+    def create_progress_bar(self):
+        """Создает и возвращает стилизованный прогресс-бар."""
+        progress_bar = QProgressBar(self)
+        progress_bar.setMinimum(0)
+        progress_bar.setMaximum(100)
+        progress_bar.setValue(0)
+        progress_bar.setFixedHeight(25)
+        progress_bar.setContentsMargins(60, 0, 60, 0)
+        progress_bar.setTextVisible(False)
+        progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #FF9840;
+                border-radius: 6px;
+                background: #303030;
+                color: #ffffff;
+                font-size: 13px;
+            }
+            QProgressBar::chunk {
+                background-color: #FF9840;
+                border-radius: 4px;
+            }
+        """)
+        return progress_bar
 
     def create_left_panel(self):
         """Создает левую панель с текстами и полями ввода."""
