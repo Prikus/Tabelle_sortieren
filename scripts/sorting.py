@@ -94,7 +94,6 @@ class ExcelSorter:
         df = df[["Artikelnummer", "Bezeichnung", "Preis", "Zustand"]].copy()
         df['Artikelnummer_raw'] = df['Artikelnummer'].astype(str)
         df['Artikelnummer'] = df['Artikelnummer'].astype(str) + df['Zustand'].astype(str).str.upper()
-        df['Bezeichnung'] = df['Bezeichnung'].astype(str) + " Zustand:" + df['Zustand'].astype(str).str.capitalize()
         df['First_Word'] = df['Bezeichnung'].str.split().str[0]
         df = df[df['First_Word'].isin(bezeichnung_filter)].drop(columns=['First_Word'])
         
@@ -208,51 +207,55 @@ class ExcelSorter:
         def get_kategorie_from_bezeichnung(bezeichnung: str) -> str:
             name = bezeichnung.lower()
 
-            if ("ipad" in name or "tab" in name) and "yealink" not in name:
-                if "apple" in name:
+            # Проверяем бренд в первую очередь
+            if "apple" in name:
+                if "ipad" in name:
                     return "Tablet > Apple"
-                elif "samsung" in name:
-                    return "Tablet > Samsung"
-                return "Tablet"
-
-            elif "iphone" in name or ("galaxy" in name and "watch" not in name and "tab" not in name):
-                if "apple" in name:
+                elif "iphone" in name:
                     return "Handy > Apple"
-                elif "samsung" in name:
-                    return "Handy > Samsung"
-                return "Handy"
-
-            elif "macbook" in name or "chromebook" in name or "notebook" in name or "book" in name:
-                if "apple" in name:
+                elif "macbook" in name:
                     return "Notebook > Apple"
-                elif "samsung" in name:
-                    return "Notebook > Samsung"
-                return "Notebook"
-
-            elif "watch" in name:
-                if "apple" in name:
+                elif "watch" in name:
                     return "Smartwatch > Apple"
-                elif "samsung" in name:
-                    return "Smartwatch > Samsung"
-                return "Smartwatch"
-
-            elif "airpods" in name or "buds" in name or "headset" in name:
-                if "apple" in name:
+                elif "airpods" in name:
                     return "Kopfhörer > Apple"
-                elif "samsung" in name:
+
+            elif "samsung" in name:
+                if "tab" in name:
+                    return "Tablet > Samsung"
+                elif "galaxy" in name and "watch" not in name and "tab" not in name and "buds" not in name:
+                    return "Handy > Samsung"
+                elif any(x in name for x in ["chromebook", "notebook", "book"]):
+                    return "Notebook > Samsung"
+                elif "watch" in name:
+                    return "Smartwatch > Samsung"
+                elif "buds" in name:
                     return "Kopfhörer > Samsung"
-                elif "yealink" in name:
-                    return "Kopfhörer > Yealink"
-                return "Kopfhörer"
+
+            elif "xiaomi" in name:
+                if "tab" in name:
+                    return "Tablet > Xiaomi"
+                # Если нет признаков других устройств - телефон
+                elif not any(x in name for x in ["tab", "chromebook", "notebook", "book", "watch", "buds"]):
+                    return "Handy > Xiaomi"
+                elif any(x in name for x in ["chromebook", "notebook", "book"]):
+                    return "Notebook > Xiaomi"
+                elif "watch" in name:
+                    return "Smartwatch > Xiaomi"
+                elif "buds" in name:
+                    return "Kopfhörer > Xiaomi"
 
             return "Sonstiges"
 
+
         df['Kategorien'] = df['Bezeichnung'].apply(get_kategorie_from_bezeichnung)
+        df['Bezeichnung'] = df['Bezeichnung'].astype(str) + " Zustand:" + df['Zustand'].astype(str).str.capitalize()
         df = df.rename(columns={'Bezeichnung': 'Name'})
 
-        # Удаляем временный столбец 
+        # Удаляем временный столбец
         df.drop(columns=['Artikelnummer_raw'], inplace=True)
 
+        # Сохраняем в Excel или CSV
         try:
             if export_to_csv:
                 # Сохраняем в CSV с запятыми
