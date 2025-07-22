@@ -160,6 +160,13 @@ class MainWindow(QMainWindow):
         """)
         return progress_bar
 
+    def update_progress_bar(self, current_step, total_steps):
+        percent = int((current_step / total_steps) * 100) if total_steps else 0
+        self.progress_bar.setValue(percent)
+        QApplication.processEvents()
+        print(f"Progress: {percent}%")  # Отладочный вывод
+
+
     def create_left_panel(self):
         """Создает левую панель с текстами и полями ввода."""
         left_panel = QWidget(self)
@@ -314,6 +321,8 @@ class MainWindow(QMainWindow):
 
     def on_starten_click(self):
         """Обработка нажатия кнопки Starten."""
+        # Обнуляем прогресс-бар перед началом сортировки
+        self.progress_bar.setValue(0)
         try:
             # Проверяем, что поля существуют и значения читаются
             lieferung_value = self.lieferung_input.text()
@@ -333,7 +342,7 @@ class MainWindow(QMainWindow):
             print(f"Галочка2: {checkbox_steuer}")
 
             # Передаем данные в сортировщик
-            sortier = ExcelSorter(path_save)
+            sortier = ExcelSorter(path_save, progress_callback=self.update_progress_bar)
             sortier.sortExcel(
                 lieferung_value, 
                 aufschlag_value1, 
