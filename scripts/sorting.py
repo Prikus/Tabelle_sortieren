@@ -1,20 +1,21 @@
-# Импортируем необходимые библиотеки
-import pandas as pd                                # Для работы с таблицами Excel
-import toml                                        # Для чтения конфигурационных файлов
-import os                                          # Для работы с файловой системой
-import requests                                    # Для HTTP-запросов (загрузка описаний и изображений)
-from datetime import datetime                      # Для работы с датой и временем
-from openpyxl import load_workbook                 # Для работы с Excel-файлами (автоподгонка ширины столбцов)
-from openpyxl.utils import get_column_letter       # Для получения буквенного обозначения столбца
-from concurrent.futures import ThreadPoolExecutor  # Для параллельной загрузки данных
-# Дополнительные библиотеки для логирования отсутствующих изображений\import csv
-import threading                                   # Для потокобезопасного логирования
-import csv                                         # Для работы с CSV-файлами (логирование отсутствующих изображений)
-from PyQt5.QtWidgets import QApplication           # Для обработки событий в прогресс-баре
+# Импортируем необходимые библиотеки для работы с Excel, конфигами, HTTP-запросами и файловой системой
+
+import pandas as pd                                # Работа с таблицами Excel
+import toml                                        # Чтение конфигурационных файлов TOML
+import os                                          # Операции с файловой системой
+import requests                                    # HTTP-запросы для загрузки описаний и изображений
+from datetime import datetime                      # Работа с датой и временем
+from openpyxl import load_workbook                 # Работа с Excel-файлами (автоподгонка ширины столбцов)
+from openpyxl.utils import get_column_letter       # Получение буквенного обозначения столбца Excel
+from concurrent.futures import ThreadPoolExecutor  # Параллельная загрузка данных (многопоточность)
+import threading                                   # Потокобезопасное логирование
+import csv                                         # Работа с CSV-файлами (логирование отсутствующих изображений)
 
 # Уровень модуля для потокобезопасного логирования
-_log_file = "missing_images.csv" 
-_log_lock = threading.Lock()                        
+_log_file = "missing_images.csv"  # Файл для логирования отсутствующих изображений
+_log_lock = threading.Lock()      # Блокировка для потокобезопасной записи
+
+
 # Класс для сортировки и обработки Excel-файлов
 class ExcelSorter: 
     def __init__(self, file_path_save, progress_callback=None):
@@ -74,17 +75,18 @@ class ExcelSorter:
                 aufschlag_value2, 
                 checkbox_steuer
                 ):
-            # Расчет итоговой цены с учетом надбавок и налога
-            STEUER = 1.19
-            if preis < 500:
-                preis = preis + aufschlag_value1 + lieferung_value
-            else:
-                preis = preis + (preis * aufschlag_value2 / 100) + lieferung_value
+        # Расчет итоговой цены с учетом надбавок и налога
+        STEUER = 1.19
+        if preis < 500:
+            preis = preis + aufschlag_value1 + lieferung_value
+        else:
+            preis = preis + (preis * aufschlag_value2 / 100) + lieferung_value
 
-            if checkbox_steuer:
-                preis *= STEUER
+        if checkbox_steuer:
+            preis *= STEUER
 
-            return round(preis, 2)
+        return round(preis, 2)
+
     def update_progress_bar(self, current_step, total_steps):
         if self.progress_callback:
             self.progress_callback(current_step, total_steps)
@@ -239,46 +241,47 @@ class ExcelSorter:
         def get_kategorie_from_bezeichnung(bezeichnung: str) -> str:
             name = bezeichnung.lower()
 
-            # Проверяем бренд в первую очередь
+            # Определяем категорию для Apple по ключевым словам
             if "apple" in name:
                 if "ipad" in name:
-                    return "Tablet > Apple"
+                    return "Tablet > Apple"         # Если в названии есть "ipad"
                 elif "iphone" in name:
-                    return "Handy > Apple"
+                    return "Handy > Apple"          # Если в названии есть "iphone"
                 elif "macbook" in name:
-                    return "Notebook > Apple"
+                    return "Notebook > Apple"       # Если в названии есть "macbook"
                 elif "watch" in name:
-                    return "Smartwatch > Apple"
+                    return "Smartwatch > Apple"     # Если в названии есть "watch"
                 elif "airpods" in name:
-                    return "Kopfhörer > Apple"
+                    return "Kopfhörer > Apple"      # Если в названии есть "airpods"
 
+            # Категории для Samsung
             elif "samsung" in name:
                 if "tab" in name:
-                    return "Tablet > Samsung"
+                    return "Tablet > Samsung"       # Если в названии есть "tab"
                 elif "galaxy" in name and "watch" not in name and "tab" not in name and "buds" not in name:
-                    return "Handy > Samsung"
+                    return "Handy > Samsung"        # Если "galaxy", но не "watch", "tab", "buds"
                 elif any(x in name for x in ["chromebook", "notebook", "book"]):
-                    return "Notebook > Samsung"
+                    return "Notebook > Samsung"     # Если есть "chromebook", "notebook", "book"
                 elif "watch" in name:
-                    return "Smartwatch > Samsung"
+                    return "Smartwatch > Samsung"   # Если есть "watch"
                 elif "buds" in name:
-                    return "Kopfhörer > Samsung"
+                    return "Kopfhörer > Samsung"    # Если есть "buds"
 
+            # Категории для Xiaomi
             elif "xiaomi" in name:
                 if "tab" in name:
-                    return "Tablet > Xiaomi"
-                # Если нет признаков других устройств - телефон
+                    return "Tablet > Xiaomi"        # Если в названии есть "tab"
                 elif not any(x in name for x in ["tab", "chromebook", "notebook", "book", "watch", "buds"]):
-                    return "Handy > Xiaomi"
+                    return "Handy > Xiaomi"         # Если нет других ключевых слов
                 elif any(x in name for x in ["chromebook", "notebook", "book"]):
-                    return "Notebook > Xiaomi"
+                    return "Notebook > Xiaomi"      # Если есть "chromebook", "notebook", "book"
                 elif "watch" in name:
-                    return "Smartwatch > Xiaomi"
+                    return "Smartwatch > Xiaomi"    # Если есть "watch"
                 elif "buds" in name:
-                    return "Kopfhörer > Xiaomi"
+                    return "Kopfhörer > Xiaomi"     # Если есть "buds"
 
-            return "Sonstiges"
-
+            # Категория по умолчанию
+            return "Sonstiges"                      # Если не найдено ни одно из условий
 
         df['Kategorien'] = df['Bezeichnung'].apply(get_kategorie_from_bezeichnung)
         df['Bezeichnung'] = df['Bezeichnung'].astype(str) + " Zustand:" + df['Zustand'].astype(str).str.capitalize()
