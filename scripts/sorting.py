@@ -10,14 +10,16 @@ from concurrent.futures import ThreadPoolExecutor  # Для параллельн
 # Дополнительные библиотеки для логирования отсутствующих изображений\import csv
 import threading                                   # Для потокобезопасного логирования
 import csv                                         # Для работы с CSV-файлами (логирование отсутствующих изображений)
+from PyQt5.QtWidgets import QApplication           # Для обработки событий в прогресс-баре
 
 # Уровень модуля для потокобезопасного логирования
 _log_file = "missing_images.csv" 
 _log_lock = threading.Lock()                        
 # Класс для сортировки и обработки Excel-файлов
 class ExcelSorter: 
-    def __init__(self, file_path_save):
+    def __init__(self, file_path_save, progress_callback=None):
         # Формируем путь для сохранения файла с учетом текущей даты
+        self.progress_callback = progress_callback
         current_date = datetime.now().strftime("%d-%m-%Y")
 
         if file_path_save == "":
@@ -83,6 +85,9 @@ class ExcelSorter:
                 preis *= STEUER
 
             return round(preis, 2)
+    def update_progress_bar(self, current_step, total_steps):
+        if self.progress_callback:
+            self.progress_callback(current_step, total_steps)
 
     def methodSortEins(self, lieferung_value, aufschlag_value1, aufschlag_value2, file_path, checkbox_kaufpreis, checkbox_steuer, export_to_csv=True):
         # Основная сортировка для обычных файлов
@@ -171,21 +176,48 @@ class ExcelSorter:
                 print(f"\033[91mFehler beim Zugriff auf {url}: {e}\033[0m")
             return " "  # При ошибке или отсутствии файла возвращаем пробел
         
-        # Параллельная загрузка данных
+        # Параллельная загрузка данных (без прогресса)
         def fetch_all_beschreibungen_parallel(funktion, artikelnummer_list, max_threads=60):
             with ThreadPoolExecutor(max_workers=max_threads) as executor:
                 return list(executor.map(funktion, artikelnummer_list))
 
-        # Добавляем столбцы с изображениями и описаниями
-        df['Bilder'] = fetch_all_beschreibungen_parallel(
+        # Параллельная загрузка данных с прогресс-баром
+        def fetch_all_beschreibungen_parallel_with_progress(funktion, artikelnummer_list, total_steps, start_step=0, max_threads=60):
+            results = [None] * len(artikelnummer_list)
+            futures = []
+            with ThreadPoolExecutor(max_workers=max_threads) as executor:
+                for idx, item in enumerate(artikelnummer_list):
+                    futures.append((idx, executor.submit(funktion, item)))
+                finished = 0
+                for idx, future in futures:
+                    result = future.result()  # Ждём результат
+                    results[idx] = result
+                    finished += 1
+                    self.update_progress_bar(start_step + finished, total_steps)
+            return results
+
+        # Добавляем столбцы с изображениями и описаниями с отслеживанием прогресса
+        artikelnummer_list = df['Artikelnummer_raw'].tolist()
+        total_steps = len(artikelnummer_list) * 3
+        step = 0
+
+        df['Bilder'] = fetch_all_beschreibungen_parallel_with_progress(
             lambda artikelnummer_raw: get_bilder_url(
-            artikelnummer_raw, 
-            df.loc[df['Artikelnummer_raw'] == artikelnummer_raw, 'Bezeichnung'].values[0]
+                artikelnummer_raw, 
+                df.loc[df['Artikelnummer_raw'] == artikelnummer_raw, 'Bezeichnung'].values[0]
             ),
-            df['Artikelnummer_raw'].tolist()
+            artikelnummer_list, total_steps, step
         )
-        df['Beschreibung'] = fetch_all_beschreibungen_parallel(beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
-        df['Kurzbeschreibung'] = fetch_all_beschreibungen_parallel(kurze_beschreibung_abrufen, df['Artikelnummer_raw'].tolist())
+        step += len(artikelnummer_list)
+
+        df['Beschreibung'] = fetch_all_beschreibungen_parallel_with_progress(
+            beschreibung_abrufen, artikelnummer_list, total_steps, step
+        )
+        step += len(artikelnummer_list)
+
+        df['Kurzbeschreibung'] = fetch_all_beschreibungen_parallel_with_progress(
+            kurze_beschreibung_abrufen, artikelnummer_list, total_steps, step
+        )
 
         # Преобразуем цены в числовой формат
         df['Preis'] = pd.to_numeric(df['Preis'].astype(str).str.replace('€', '').str.replace(' ', ''), errors='coerce')
