@@ -119,27 +119,36 @@ class ExcelSorter:
                 else:
                     print(f"\033[91mKein Bild für {artikelnummer_raw} (Status {resp.status_code})\033[0m")
                     # Логируем отсутствие
-                    with _log_lock, open(_log_file, "a", newline="", buffering=1) as csvfile:
+                    with _log_lock, open(_log_file, "a", newline="", buffering=1, encoding="utf-8") as csvfile:
                         writer = csv.writer(csvfile)
-                        writer.writerow([artikelnummer_raw, bezeichnung])
+                        writer.writerow([
+                            str(artikelnummer_raw),
+                            str(bezeichnung)
+                        ])
             except Exception as e:
                 print(f"\033[91mFehler beim Zugriff auf {article_url}: {e}\033[0m")
-                with _log_lock, open(_log_file, "a", newline="", buffering=1) as csvfile:
+                with _log_lock, open(_log_file, "a", newline="", buffering=1, encoding="utf-8") as csvfile:
                     writer = csv.writer(csvfile)
-                    writer.writerow([artikelnummer_raw, bezeichnung])
+                    writer.writerow([
+                        str(artikelnummer_raw),
+                        str(bezeichnung)
+                  ])
 
             # 2. Фоллбек по производителю
             name_lower = bezeichnung.lower()
-            for manufacturer in ("apple", "samsung", "xiaomi"):
-                if manufacturer in name_lower:
-                    manu_url = f"{base_url}/standart_{manufacturer}.webp"
+            # Получаем список производителей из конфига
+            manufacturers = config['dataSet']['data']
+            for manufacturer in manufacturers:
+                manufacturer_lower = manufacturer.lower()
+                if manufacturer_lower in name_lower:
+                    manu_url = f"{base_url}/standart_{manufacturer_lower}.webp"
                     try:
                         resp = requests.head(manu_url, timeout=100)
                         if resp.status_code == 200:
-                            print(f"\033[93mHerstellerbild gefunden ({manufacturer}): {manu_url}\033[0m")
+                            print(f"\033[93mHerstellerbild gefunden ({manufacturer_lower}): {manu_url}\033[0m")
                             return manu_url
                         else:
-                            print(f"\033[91mKein Herstellerbild für {manufacturer} (Status {resp.status_code})\033[0m")
+                            print(f"\033[91mKein Herstellerbild für {manufacturer_lower} (Status {resp.status_code})\033[0m")
                     except Exception as e:
                         print(f"\033[91mFehler beim Zugriff auf {manu_url}: {e}\033[0m")
                     break
@@ -279,7 +288,11 @@ class ExcelSorter:
                     return "Smartwatch > Xiaomi"    # Если есть "watch"
                 elif "buds" in name:
                     return "Kopfhörer > Xiaomi"     # Если есть "buds"
-
+            
+            # Категории для Garmin
+            elif "garmin" in name:
+                return "Smartwatch > Garmin"          # Если в названии есть "garmin"
+            
             # Категория по умолчанию
             return "Sonstiges"                      # Если не найдено ни одно из условий
 
