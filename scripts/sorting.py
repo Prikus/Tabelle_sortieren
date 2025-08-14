@@ -184,7 +184,7 @@ class ExcelSorter:
                 return list(executor.map(funktion, artikelnummer_list))
 
         # Параллельная загрузка данных с прогресс-баром
-        def fetch_all_beschreibungen_parallel_with_progress(funktion, artikelnummer_list, total_steps, start_step=0, max_threads=60):
+        def fetch_all_beschreibungen_parallel_with_progress(funktion, artikelnummer_list, total_steps, start_step=0, max_threads=4):
             results = [None] * len(artikelnummer_list)
             futures = []
             with ThreadPoolExecutor(max_workers=max_threads) as executor:
@@ -284,8 +284,13 @@ class ExcelSorter:
             return "Sonstiges"                      # Если не найдено ни одно из условий
 
         df['Kategorien'] = df['Bezeichnung'].apply(get_kategorie_from_bezeichnung)
-        df['Bezeichnung'] = df['Bezeichnung'].astype(str) + " Zustand:" + df['Zustand'].astype(str).str.capitalize()
+        # Не добавляем состояние к имени
+        # df['Bezeichnung'] = df['Bezeichnung'].astype(str) + " Zustand:" + df['Zustand'].astype(str).str.capitalize()
         df = df.rename(columns={'Bezeichnung': 'Name'})
+
+        # Переименовываем zustand в Schlagwörter
+        df = df.rename(columns={'Zustand': 'Schlagwörter'})
+        df['Schlagwörter'] = df['Schlagwörter'].astype(str).str.capitalize()
 
         # Удаляем временный столбец
         df.drop(columns=['Artikelnummer_raw'], inplace=True)

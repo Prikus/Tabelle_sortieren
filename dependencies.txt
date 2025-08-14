@@ -3,3 +3,4 @@ pandas
 toml
 requests
 openpyxl
+PyInstaller
