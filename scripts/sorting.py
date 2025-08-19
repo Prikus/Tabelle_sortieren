@@ -295,7 +295,10 @@ class ExcelSorter:
             
             # Категории для Garmin
             elif "garmin" in name:
-                return "Smartwatch > Garmin"          # Если в названии есть "garmin"
+                if "fenix" in name or "forerunner" or "instinct" in name:
+                    return "Smartwatch > Garmin"  # Если в названии есть "fenix", "forerunner" или "instinct"
+                else:
+                    return "Sonstiges" # Если не найдено ни одно из условий       
             
             # Категория по умолчанию
             return "Sonstiges"                      # Если не найдено ни одно из условий
