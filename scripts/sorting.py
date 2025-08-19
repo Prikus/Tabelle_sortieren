@@ -288,6 +288,8 @@ class ExcelSorter:
                     return "Smartwatch > Xiaomi"    # Если есть "watch"
                 elif "buds" in name:
                     return "Kopfhörer > Xiaomi"     # Если есть "buds"
+                elif "Scooter" in name:
+                    return "Sonstiges"
             
             # Категории для Garmin
             elif "garmin" in name:
